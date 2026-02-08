@@ -33,6 +33,7 @@
 
 # Data
 bin/
+data/
 raw_data/
 torch/*
 !torch/*.py
