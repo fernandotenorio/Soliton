@@ -1,0 +1,17 @@
+#ifndef UCI_H
+#define UCI_H
+
+#include <string>
+#include <vector>
+#include "Board.h"
+#include "HashTable.h"
+
+class UCI {
+public:
+    static void loop();
+private:
+    static void parsePosition(std::string line, Board& board, HashTable* tt);
+    static void parseGo(std::string line, Board& board);
+};
+
+#endif
