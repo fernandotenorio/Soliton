@@ -9,6 +9,7 @@ class Search {
 public:
     static const int INFINITE = 30000;
     static const int MATE = 29000;
+    static const int INVALID_SCORE = -999999;
 
     struct SearchParams {
         long nodes;
@@ -21,6 +22,8 @@ public:
 
     // Updated entry point
     static int iterativeDeepening(Board& board, int maxDepth, long long moveTime, bool verbose);
+    //For eval FEN tool
+    static int iterativeDeepeningScore(Board& board, int maxDepth, long long moveTime, bool verbose);
 
 private:
     static int alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull);

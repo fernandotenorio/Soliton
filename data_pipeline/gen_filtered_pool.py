@@ -4,6 +4,7 @@ import time
 import os
 import multiprocessing
 from functools import partial
+import glob
 
 # ---------------- CONFIGURATION & CONSTANTS ---------------- #
 
@@ -141,3 +142,23 @@ def process_fens_parallel(file_mapping_seed):
     print(f"Total Kept positions: {total_kept}")
     print(f"Global Retention ratio: {total_kept / max(1, total_seen):.3f}")
     print(f"Total Time: {round(t_global_end - t_global_start)}s")
+
+
+def generate_pool():
+    RAW_PATH = os.path.join("..", "data", "raw")
+    POOL_PATH = os.path.join("..", "data", "pool")
+
+    raw_fens = glob.glob(os.path.join(RAW_PATH, "*.fen"))
+    tasks = []
+    seed = 0
+
+    for fl in raw_fens:
+        pool_file = os.path.join(POOL_PATH, os.path.basename(fl))
+        tasks.append([fl, pool_file, seed])
+        seed+= 1
+        
+    process_fens_parallel(tasks)
+
+
+if __name__ == '__main__':
+    generate_pool()

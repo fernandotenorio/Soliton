@@ -147,6 +147,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Engine\EvalFen.cpp" />
     <ClCompile Include="src\Engine\BitBoardGen.cpp" />
     <ClCompile Include="src\Engine\Board.cpp" />
     <ClCompile Include="src\Engine\BoardState.cpp" />
@@ -169,6 +170,7 @@
     <ClInclude Include="includes\Engine\Board.h" />
     <ClInclude Include="includes\Engine\BoardState.h" />
     <ClInclude Include="includes\Engine\defs.h" />
+    <ClInclude Include="includes\Engine\EvalFen.h" />
     <ClInclude Include="includes\Engine\Evaluation.h" />
     <ClInclude Include="includes\Engine\FenParser.h" />
     <ClInclude Include="includes\Engine\HashTable.h" />

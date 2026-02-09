@@ -91,6 +91,31 @@ int Search::iterativeDeepening(Board& board, int maxDepth, long long moveTime, b
     return params.bestMove;
 }
 
+int Search::iterativeDeepeningScore(Board& board, int maxDepth, long long moveTime, bool verbose) {
+    init_mvv();
+    params.nodes = 0;
+    params.stopped = false;
+    params.bestMove = Move::NO_MOVE;
+    params.startTime = currentTimeMillis();
+    params.timeLimit = moveTime;
+    params.depthLimit = maxDepth;
+
+    int alpha = -INFINITE;
+    int beta = INFINITE;
+    int finalScore = INVALID_SCORE;
+
+    for (int d = 1; d <= params.depthLimit; d++) {
+        board.ply = 0;
+        int score = alphaBeta(board, alpha, beta, d, true);
+
+        if (params.stopped) break;
+        finalScore = score;
+
+        if (score > MATE || score < -MATE) break;
+    }
+    return finalScore;
+}
+
 int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull) {
     // Check time every 2048 nodes to avoid overhead of system clock calls
     if ((params.nodes & 2047) == 0) checkTime();

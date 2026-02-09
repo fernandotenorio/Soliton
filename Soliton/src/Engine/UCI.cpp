@@ -2,6 +2,7 @@
 #include "Engine/Search.h"
 #include "Engine/Evaluation.h"
 #include "Engine/TestSuite.h"
+#include "Engine/EvalFen.h"
 #include <iostream>
 #include <sstream>
 
@@ -40,8 +41,24 @@ void UCI::loop() {
         else if (line.find("go") == 0) {
             parseGo(line, board);
         }
-        else if (line.find("eval") == 0) {
+        else if (line.find("evaltest") == 0) {
             Evaluation::testEval("positions.fen");
+        }
+        else if (line.find("eval") == 0) {
+            std::stringstream ss(line);
+            std::string cmd, inputPath, outputPath;
+            int depth;
+            ss >> cmd; // This consumes the word "eval" from the stream
+
+            std::string fl;
+
+            // Now expects: eval <input> <output> <depth>
+            if (ss >> inputPath >> outputPath >> depth) {         
+                EvalFEN::eval(inputPath, outputPath, depth);
+            }
+            else {
+                std::cout << "Error: Invalid format. Usage: eval <filename> <depth>" << std::endl;
+            }
         }
         else if (line.find("bench") == 0) {
             TestSuite::runFile("bench.epd", 50);

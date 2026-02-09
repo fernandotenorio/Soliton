@@ -63,6 +63,9 @@
     <ClCompile Include="src\Engine\TestSuite.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Engine\EvalFen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="includes\Engine\BitBoardGen.h">
@@ -111,6 +114,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="includes\Engine\TestSuite.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="includes\Engine\EvalFen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
