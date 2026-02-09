@@ -46,3 +46,11 @@ NNUE/*
 !NNUE/src
 
 .vs/
+
+# python
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
