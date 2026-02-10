@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <thread>
 #include "Board.h"
 #include "HashTable.h"
 
@@ -12,6 +13,7 @@ public:
 private:
     static void parsePosition(std::string line, Board& board, HashTable* tt);
     static void parseGo(std::string line, Board& board);
+    static std::thread searchThread;
 };
 
 #endif

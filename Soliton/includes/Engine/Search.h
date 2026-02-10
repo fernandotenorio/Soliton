@@ -4,6 +4,7 @@
 #include "Board.h"
 #include "Move.h"
 #include <chrono>
+#include <atomic>
 
 class Search {
 public:
@@ -17,13 +18,14 @@ public:
         int depthLimit;
         long long timeLimit; // in milliseconds
         long long startTime;
-        bool stopped;
+        std::atomic<bool> stopped;
     };
 
     // Updated entry point
     static int iterativeDeepening(Board& board, int maxDepth, long long moveTime, bool verbose);
     //For eval FEN tool
     static int iterativeDeepeningScore(Board& board, int maxDepth, long long moveTime, bool verbose);
+    static void stop();
 
 private:
     static int alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull);

@@ -8,6 +8,10 @@
 
 Search::SearchParams Search::params;
 
+void Search::stop() {
+    params.stopped = true;
+}
+
 // Helper to get current time in milliseconds
 long long currentTimeMillis() {
     using namespace std::chrono;

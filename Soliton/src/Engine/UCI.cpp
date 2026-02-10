@@ -6,6 +6,8 @@
 #include <iostream>
 #include <sstream>
 
+std::thread UCI::searchThread; 
+
 void UCI::loop() {
     Evaluation::initAll();
     Board board = Board::fromStartPosition();
@@ -23,6 +25,12 @@ void UCI::loop() {
             std::cout << "readyok" << std::endl;
         }
         else if (line == "ucinewgame") {
+            // Ensure search is stopped before resetting
+            if(searchThread.joinable()) {
+                Search::stop();
+                searchThread.join();
+            }
+            
             // 1. Clear the Transposition Table
             if (board.hashTable) {
                 board.hashTable->reset();
@@ -30,16 +38,20 @@ void UCI::loop() {
 
             // 2. Clear Search Heuristics
             board.resetSearchHeuristics();
-
-            // 3. Reset the board to startpos (often expected, though parsePosition usually follows)
             board = Board::fromStartPosition();
-            board.setHashTable(tt); // Ensure the new board object has the TT pointer
+            board.setHashTable(tt);
         }
         else if (line.find("position") == 0) {
             parsePosition(line, board, tt);
         }
         else if (line.find("go") == 0) {
             parseGo(line, board);
+        }
+        else if (line == "stop") {
+            if (searchThread.joinable()) {
+                Search::stop();
+                searchThread.join();
+            }
         }
         else if (line.find("evaltest") == 0) {
             Evaluation::testEval("positions.fen");
@@ -49,7 +61,6 @@ void UCI::loop() {
             std::string cmd, inputPath, outputPath;
             int depth;
             ss >> cmd; // This consumes the word "eval" from the stream
-
             std::string fl;
 
             // Now expects: eval <input> <output> <depth>
@@ -64,6 +75,11 @@ void UCI::loop() {
             TestSuite::runFile("bench.epd", 50);
         }
         else if (line == "quit") {
+            // Ensure search is stopped before quitting
+            if (searchThread.joinable()) {
+                Search::stop();
+                searchThread.join();
+            }
             break;
         }
     }
@@ -125,9 +141,30 @@ void UCI::parseGo(std::string line, Board& board) {
         else if (token == "movetime") {
             ss >> movetime;
         }
-        // You can also handle "wtime" or "btime" here similarly
+        /* TODO
+        else if (token == "wtime") {
+            // Basic time management placeholder
+            long long wtime;
+            ss >> wtime;
+            if(board.state.currentPlayer == Board::WHITE) movetime = wtime / 30;
+        }
+        else if (token == "btime") {
+             // Basic time management placeholder
+             long long btime;
+             ss >> btime;
+             if(board.state.currentPlayer == Board::BLACK) movetime = btime / 30;
+        }
+        */
     }
 
-    // Start search with parameters
-    Search::iterativeDeepening(board, depth, movetime, true);
+    // Ensure any previous search is finished
+    if (searchThread.joinable()) {
+        searchThread.join();
+    }
+
+    // [board, depth, movetime] captures these variables by VALUE.
+    // 'mutable' is required because iterativeDeepening modifies its local copy of the board.
+    searchThread = std::thread([board, depth, movetime]() mutable {
+        Search::iterativeDeepening(board, depth, movetime, true);
+    });
 }
