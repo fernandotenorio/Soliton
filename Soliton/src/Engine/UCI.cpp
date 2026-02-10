@@ -3,6 +3,7 @@
 #include "Engine/Evaluation.h"
 #include "Engine/TestSuite.h"
 #include "Engine/EvalFen.h"
+#include "Engine/Perft.h"
 #include <iostream>
 #include <sstream>
 
@@ -70,6 +71,9 @@ void UCI::loop() {
             else {
                 std::cout << "Error: Invalid format. Usage: eval <filename> <depth>" << std::endl;
             }
+        }
+        else if (line.find("perft") == 0) {
+            Perft::runAll("perft.txt");
         }
         else if (line.find("bench") == 0) {
             TestSuite::runFile("bench.epd", 50);

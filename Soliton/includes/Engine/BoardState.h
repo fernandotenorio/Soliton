@@ -48,8 +48,9 @@ class BoardState{
 			epSquare = eps;
 			halfMoves = hm;
 			currentPlayer = cp;
-			ck = ck;
+			castleKey = ck;
 			zKey = zk;
+			valid = false;
 		}
 
 		BoardState(const BoardState& s){
