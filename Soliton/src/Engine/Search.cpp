@@ -172,6 +172,10 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
             if (Move::captured(move) == Board::EMPTY) {
                 board.searchKillers[1][board.ply] = board.searchKillers[0][board.ply];
                 board.searchKillers[0][board.ply] = move;
+
+                 // History heuristic
+                int piece = board.board[Move::from(bestMove)];
+                board.searchHistory[piece][Move::to(bestMove)] += depth * depth;
             }
             HashTable::storeHashEntry(board, move, beta, HFBETA, depth);
             return beta;
