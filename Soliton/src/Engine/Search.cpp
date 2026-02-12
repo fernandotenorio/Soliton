@@ -168,9 +168,7 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
         if (!undo.valid) continue;
 
         legalMovesCount++;
-        board.ply++;
         int score = -alphaBeta(board, -beta, -alpha, depth - 1, true);
-        board.ply--;
         board.undoMove(move, undo);
 
         if (params.stopped) return 0;
@@ -289,10 +287,8 @@ int Search::quiescence(Board& board, int alpha, int beta) {
             continue;
         }
 
-        board.ply++;
         // Recursively call Quiescence Search
         int score = -quiescence(board, -beta, -alpha);
-        board.ply--;
         board.undoMove(move, undo);
 
         // Exit if time has run out
