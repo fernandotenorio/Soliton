@@ -125,10 +125,7 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
     if ((params.nodes & 2047) == 0) checkTime();
     if (params.stopped) return 0;
 
-    params.nodes++;
-    if (depth <= 0) return quiescence(board, alpha, beta);
-
-    if ((board.state.halfMoves >= 100 || board.isRepetition()) && board.ply){
+    if ((board.state.halfMoves >= 100 || board.isRepetition()) && board.ply > 0){
         return 0;
     }
 
@@ -136,6 +133,9 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
     if (board.ply >= Board::MAX_DEPTH - 1) {
         return Evaluation::evaluate(board);
     }
+
+    params.nodes++;
+    if (depth <= 0) return quiescence(board, alpha, beta);
 
     int pvMove = Move::NO_MOVE;
     int hashScore = 0;
@@ -181,8 +181,8 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
                 board.searchKillers[0][board.ply] = move;
 
                  // History heuristic
-                int piece = board.board[Move::from(bestMove)];
-                board.searchHistory[piece][Move::to(bestMove)] += depth * depth;
+                int piece = board.board[Move::from(move)];
+                board.searchHistory[piece][Move::to(move)] += depth * depth;
             }
             HashTable::storeHashEntry(board, move, beta, HFBETA, depth);
             return beta;
@@ -249,9 +249,9 @@ int Search::quiescence(Board& board, int alpha, int beta) {
 
     params.nodes++;
 
-    if (board.state.halfMoves >= 100 || board.isRepetition()){	
-		return 0;
-	}
+    if ((board.state.halfMoves >= 100 || board.isRepetition()) && board.ply > 0){
+        return 0;
+    }
 
     // Safety check for search depth to prevent stack overflow in extreme tactical scenarios
     if (board.ply >= Board::MAX_DEPTH - 1) {
