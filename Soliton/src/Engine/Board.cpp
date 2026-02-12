@@ -400,12 +400,18 @@ void Board::undoMove(int move, BoardState undo){
 	assert(Zobrist::getKey(*this) == zKey);
 }
 
-bool Board::isRepetition(){
-	for (int i = histPly - 1; i >= 0; i--){
-		if (zHist[i] == zKey)
-			return true;
-	}
-	return false;
+bool Board::isRepetition() {
+    // We only need to check back as far as the half-move clock allows.
+    // Positions before an irreversible move (pawn move/capture) cannot be repeated.
+    // We start from histPly - 2 because histPly - 1 is the immediate parent.
+    // We go back by 2 because a position can only repeat on the same side's turn.
+    int start = std::max(0, histPly - state.halfMoves);
+    for (int i = histPly - 2; i >= start; i -= 2) {
+        if (zHist[i] == zKey) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int Board::strToCode(char s){
