@@ -132,6 +132,11 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
         return 0;
     }
 
+    // Safety check for search depth to prevent stack overflow in extreme tactical scenarios
+    if (board.ply >= Board::MAX_DEPTH - 1) {
+        return Evaluation::evaluate(board);
+    }
+
     int pvMove = Move::NO_MOVE;
     int hashScore = 0;
     if (HashTable::probeHashEntry(board, &pvMove, &hashScore, alpha, beta, depth)) {
