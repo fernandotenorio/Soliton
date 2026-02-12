@@ -128,7 +128,9 @@ int Search::alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull)
     params.nodes++;
     if (depth <= 0) return quiescence(board, alpha, beta);
 
-    if (board.isRepetition()) return 0;
+    if ((board.state.halfMoves >= 100 || board.isRepetition()) && board.ply){
+        return 0;
+    }
 
     int pvMove = Move::NO_MOVE;
     int hashScore = 0;
@@ -241,6 +243,10 @@ int Search::quiescence(Board& board, int alpha, int beta) {
     if (params.stopped) return 0;
 
     params.nodes++;
+
+    if (board.state.halfMoves >= 100 || board.isRepetition()){	
+		return 0;
+	}
 
     // Safety check for search depth to prevent stack overflow in extreme tactical scenarios
     if (board.ply >= Board::MAX_DEPTH - 1) {
