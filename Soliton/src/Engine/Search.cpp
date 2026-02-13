@@ -239,69 +239,202 @@ void Search::sortMoves(MoveList& moves, const Board& board, int pvMove, int ply)
     }
 }
 
-
 int Search::quiescence(Board& board, int alpha, int beta) {
-    // 1. Periodic Time Check
+    assert(alpha < beta);
+
+    // 1. Periodic Resource Check
     if ((params.nodes & 2047) == 0) checkTime();
     if (params.stopped) return 0;
 
     params.nodes++;
 
-    if ((board.state.halfMoves >= 100 || board.isRepetition()) && board.ply > 0){
+    // 2. Check for Repetition / 50-move rule
+    // Essential now that we allow non-capture evasions (perpetual check detection)
+    if ((board.state.halfMoves >= 100 || board.isRepetition()) && board.ply > 0) {
         return 0;
     }
 
-    // Safety check for search depth to prevent stack overflow in extreme tactical scenarios
+    // Safety: Prevent stack overflow
     if (board.ply >= Board::MAX_DEPTH - 1) {
         return Evaluation::evaluate(board);
     }
 
-    // 2. Stand-Pat Score
-    // We get a "static" evaluation of the position. If it's already good enough 
-    // to cause a beta cutoff, we stop immediately without even looking at captures.
-    int standPat = Evaluation::evaluate(board);
-    if (standPat >= beta) {
-        return beta;
-    }
-    if (standPat > alpha) {
-        alpha = standPat;
-    }
-
-    // 3. Generate and Sort Captures
+    // 3. Check State Analysis
     int side = board.state.currentPlayer;
-    MoveList moves;
-    MoveGen::pseudoLegalCaptureMoves(&board, side, moves);
+    bool inCheck = MoveGen::isSquareAttacked(&board, board.kingSQ[side], side ^ 1);
 
-    // Sort captures using MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
-    // This is passed NO_MOVE for the PV move because we are in Quiescence.
+    // 4. Stand-Pat (Only if NOT in check)
+    int standPat = -Search::INFINITE;
+
+    if (!inCheck) {
+        standPat = Evaluation::evaluate(board);
+
+        if (standPat >= beta) {
+            return beta;
+        }
+
+        if (standPat > alpha) {
+            alpha = standPat;
+        }
+    }
+
+    // 5. Move Generation
+    MoveList moves;
+    
+    if (inCheck) {
+        U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
+        MoveGen::getEvasions(&board, side, moves, occup);
+    }
+    else {
+        MoveGen::pseudoLegalCaptureMoves(&board, side, moves);
+        MoveGen::pawnPromotions(&board, side, moves, true);
+    }
+
+    // 6. Score and Sort Moves
     sortMoves(moves, board, Move::NO_MOVE, board.ply);
 
-    // 4. Capture Search Loop
+    int legalMoves = 0;
+
     for (int i = 0; i < moves.size(); i++) {
         int move = moves.get(i);
 
-        // 5. Post-Move Legality Check
-        // Make the move and see if the board state considers it legal
-        BoardState undo = board.makeMove(move);
-        if (!undo.valid) {
-            continue;
+        // --- PRUNING (Only when NOT in Check) ---
+        if (!inCheck) {
+            int promote = Move::promoteTo(move);
+            int captured = Move::captured(move);
+
+            // Delta Pruning
+            if (promote == Board::EMPTY) {
+                int delta = abs(Evaluation::PIECE_VALUES[captured]) + 200;
+                if (standPat + delta < alpha) continue;
+            }
+
+            // SEE Pruning
+            if (promote == Board::EMPTY) {
+                int from = Move::from(move);
+                int to = Move::to(move);
+                int piece = board.board[from];
+                // Check if capture loses material
+                if (see(&board, to, captured, from, piece) < 0) continue;
+            }
         }
 
-        // Recursively call Quiescence Search
+        BoardState undo = board.makeMove(move);
+        if (!undo.valid) continue;
+
+        legalMoves++;
+
         int score = -quiescence(board, -beta, -alpha);
         board.undoMove(move, undo);
 
-        // Exit if time has run out
         if (params.stopped) return 0;
 
-        // 6. Alpha-Beta Pruning
-        if (score >= beta) {
-            return beta;
-        }
-        if (score > alpha) {
-            alpha = score;
-        }
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+    }
+
+    // 7. Checkmate Detection
+    if (inCheck && legalMoves == 0) {
+        return -Search::MATE + board.ply;
     }
 
     return alpha;
+}
+
+bool Search::isBadCapture(const Board& board, int move, int side) {
+    int from = Move::from(move);
+    int to = Move::to(move);
+    int attacker = board.board[from];
+    int target = board.board[to];
+
+    return Search::see(&board, to, target, from, attacker) < 0;
+}
+
+U64 getLeastValuablePiece(const Board* board, U64 attadef, int side, int& piece) {
+    for (piece = Board::PAWN + side; piece <= Board::KING + side; piece += 2) {
+        U64 subset = attadef & board->bitboards[piece];
+        if (subset)
+            //return subset & -subset; //ok in other compilers
+            return subset & (~subset + 1);
+    }
+    return 0;
+}
+
+#include "Engine/Magic.h"
+U64 considerXrays(const Board* board, U64 occu, U64 attackdef, int sq) {
+    int color = board->state.currentPlayer;
+    U64 rookQueens = board->bitboards[Board::WHITE_ROOK] | board->bitboards[Board::WHITE_QUEEN] |
+        board->bitboards[Board::BLACK_ROOK] | board->bitboards[Board::BLACK_QUEEN];
+
+    U64 bishopQueens = board->bitboards[Board::WHITE_BISHOP] | board->bitboards[Board::WHITE_QUEEN] |
+        board->bitboards[Board::BLACK_BISHOP] | board->bitboards[Board::BLACK_QUEEN];
+
+    U64 att = (Magic::rookAttacksFrom(occu, sq) & rookQueens) | (Magic::bishopAttacksFrom(occu, sq) & bishopQueens);
+    return att & occu;
+}
+
+//see gemini3
+int Search::see(const Board* board, int toSq, int target, int fromSq, int aPiece) {
+    // Array to store score at each depth
+    int gain[32];
+    int d = 0;
+
+    // Initial gain is the value of the piece sitting on the target square
+    gain[d] = abs(Evaluation::PIECE_VALUES[target]);
+
+    int side = board->state.currentPlayer;
+    U64 fromSet = (BitBoardGen::ONE << fromSq);
+
+    // All pieces on the board
+    U64 occup = board->bitboards[Board::WHITE] | board->bitboards[Board::BLACK];
+
+    // Calculate initial attackers
+    U64 attadef = MoveGen::attackers_to(board, toSq, Board::WHITE)
+        | MoveGen::attackers_to(board, toSq, Board::BLACK);
+
+    // X-Ray optimizations (update these only when necessary)
+    do {
+        d++;
+
+        // 1. Calculate gain for this depth
+        // value of the piece that just moved - previous gain
+        gain[d] = abs(Evaluation::PIECE_VALUES[aPiece]) - gain[d - 1];
+
+        // 2. Pruning
+        // If the side to move is already losing material even if they stop now, 
+        // they will just stand pat. We can cut off here.
+        if (std::max(-gain[d - 1], gain[d]) < 0) {
+            break;
+        }
+
+        // 3. Update Board State (Simulation)
+        attadef ^= fromSet; // Remove the attacker from the list
+        occup ^= fromSet;   // Remove the piece from the board
+
+        // 4. Update X-Rays
+        // CRITICAL FIX: We generally always check for X-rays because ANY piece can block.
+        // Optimization: Only check if the piece that moved is aligned with the target.
+        // If you have LINES_BB initialized:
+         if (BitBoardGen::LINES_BB[fromSq][toSq]) {
+            attadef |= considerXrays(board, occup, attadef, toSq);
+         }
+        // If not, just call considerXrays unconditionally. It is safer.
+
+        // 5. Switch Side & Find Next Attacker
+        side ^= 1;
+
+        // Pass aPiece by reference (&). getLeastValuablePiece will update it 
+        // to the type of the NEXT attacker (e.g., from Pawn to Rook).
+        fromSet = getLeastValuablePiece(board, attadef, side, aPiece);
+
+        // 'fromSq' is only needed if you use LINES_BB optimization above
+        fromSq = numberOfTrailingZeros(fromSet); 
+
+    } while (fromSet);
+
+    // Propagate minimax scores back to the root
+    while (--d) {
+        gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
+    }
+    return gain[0];
 }

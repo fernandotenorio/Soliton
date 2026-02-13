@@ -30,6 +30,8 @@ public:
 private:
     static int alphaBeta(Board& board, int alpha, int beta, int depth, bool doNull);
     static int quiescence(Board& board, int alpha, int beta);
+    static int see(const Board* board, int toSq, int target, int fromSq, int aPiece);
+    static bool isBadCapture(const Board& board, int move, int side);
     static void checkTime(); // Checks if we should stop the search
 
     static int scoreMove(const Board& board, int move, int pvMove);
