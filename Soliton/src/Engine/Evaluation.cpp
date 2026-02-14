@@ -304,7 +304,6 @@ void Evaluation::evalPawns(const Board& board, int& mg, int& eg){
 	U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
 
 	for (int side = 0; side < 2; side++){
-		
 		int opp = side^1;		
 		U64 pawnBB = board.bitboards[Board::PAWN | side];
 		U64 pawns = pawnBB;
