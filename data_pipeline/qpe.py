@@ -112,38 +112,47 @@ def tactical_move(board=None, epdinfo=None, move=None):
 
 
 def runengine(engine_file, engineoption, epdfile, movetimems,
-              outputepd, pvlen, scoremargin, use_static_eval, lowpvfn, evaluated_file):
+              outputepd, pvlen, scoremargin, use_static_eval,
+              lowpvfn, evaluated_file):
+
     pos_num = 0
 
-    # Get epd's that were previously evaluated.
-    evaluated_epds = get_epd(evaluated_file)
+    evaluated_epds = set(get_epd(evaluated_file))
 
     folder = Path(engine_file).parents[0]
     engine = chess.engine.SimpleEngine.popen_uci(engine_file, cwd=folder)
 
-    # Set engine option
     if engineoption is not None:
         for opt in engineoption.split(','):
             optname = opt.split('=')[0].strip()
             optvalue = opt.split('=')[1].strip()
             engine.configure({optname: optvalue})
 
-    limit = chess.engine.Limit(time=movetimems/1000)
-    engineprocess = subprocess.Popen(engine_file, stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT,
-                                     universal_newlines=True, bufsize=1)
+    limit = chess.engine.Limit(time=movetimems / 1000)
 
-    # Open epd file to get epd lines, analyze, and save it.
+    # second process for static eval
+    engineprocess = subprocess.Popen(
+        engine_file,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+        bufsize=1
+    )
+
+    # ---- OPEN FILES ONCE ----
+    evaluated_fh = open(evaluated_file, "a")
+    output_fh = open(outputepd, "a", buffering=1)
+
+    eval_buffer = []
+    FLUSH_EVERY = 10
+
     with open(epdfile) as f:
-        for lines in f:
-            ismate = False
+        for line in f:
 
-            epdline = lines.strip()
+            epdline = line.strip()
             if not epdline:
                 continue
-                
-            logging.info(epdline)
 
             try:
                 board, epdinfo = chess.Board().from_epd(epdline)
@@ -154,115 +163,106 @@ def runengine(engine_file, engineoption, epdfile, movetimems,
             epd = board.epd()
             pos_num += 1
 
-            print(f'pos: {pos_num}')
+            if pos_num % 500 == 0:
+                print(f'pos: {pos_num}')
 
-            # Don't evaluate current epd if it is already in evaluated.epd
             if epd in evaluated_epds:
-                print(f'This epd {epdline} is already evaluated.')
                 continue
 
-            # Skip if side to move is in check.
+            accept = True
+            ismate = False
+
+            # --- skip conditions before search ---
             if board.is_attacked_by(not board.turn, board.king(board.turn)):
-                print(f'Skip, the side to move is incheck in {epdline}.')
-                save_evaluated_epd(epdline, evaluated_file)
-                continue
+                accept = False
+            elif tactical_move(board=board, epdinfo=epdinfo, move=None):
+                accept = False
+            else:
+                pv, score, mate_score = '', None, None
+                with engine.analysis(board, limit) as analysis:
+                    for info in analysis:
+                        if ('upperbound' not in info
+                                and 'lowerbound' not in info
+                                and 'score' in info
+                                and 'pv' in info):
 
-            # Skip if EPD bm is a tactical move.
-            if tactical_move(board=board, epdinfo=epdinfo, move=None):
-                print(f'Skip, the bm in {epdline} is tactical.')
-                save_evaluated_epd(epdline, evaluated_file)
-                continue
+                            pv = info['pv']
 
-            pv, score, mate_score = '', None, None
-            with engine.analysis(board, limit) as analysis:
-                for info in analysis:
-                    if ('upperbound' not in info
-                            and 'lowerbound' not in info
-                            and 'score' in info
-                            and 'pv' in info):
-                        pv = info['pv']
+                            if info['score'].is_mate():
+                                ismate = True
+                                mate_score = info['score']
+                            else:
+                                mate_score = None
 
-                        if info['score'].is_mate():
-                            ismate = True
-                            mate_score = info['score']
-                        else:
-                            ismate = False
-                            mate_score = None
+                            score = info['score'].relative.score(
+                                mate_score=32000
+                            )
 
-                        score = info['score'].relative.score(mate_score=32000)
+                if ismate:
+                    accept = False
 
-            save_evaluated_epd(epdline, evaluated_file)
+                # --- static eval filter ---
+                elif (use_static_eval and score is not None and
+                      'stockfish' in engine.id['name'].lower()):
 
-            # Don't extract if score is mate or mated
-            if ismate:
-                print(f'score: {mate_score}')
-                print('Skip, score is a mate.')
-                continue
+                    staticeval = stockfish_staticeval(engineprocess, board)
+                    if staticeval is None:
+                        accept = False
+                    else:
+                        absdiff = abs(score - staticeval)
+                        if absdiff > scoremargin:
+                            accept = False
 
-            # Compare Stockfish static eval and search score.
-            if (use_static_eval and score is not None and
-                    'stockfish' in engine.id['name'].lower()):
-                staticeval = stockfish_staticeval(engineprocess, board)
-                absdiff = abs(score - staticeval)
-                if absdiff > scoremargin:
-                    print(f'static scorecp: {staticeval}, '
-                          f'search scorecp: {score}, '
-                          f'abs({score} - ({staticeval})): {absdiff}')
-                    print('Skip, abs score difference between static and '
-                          f'search score is above {scoremargin} score margin.')
-                    continue
+                # --- pv length check ---
+                elif len(pv) < pvlen:
+                    accept = False
 
-            # Skip if required pvlen is not meet.
-            if len(pv) < pvlen:
-                ucipv = [str(m) for m in pv]
-                print(ucipv)
-                print(f'Skip, pv length is below {pvlen} plies.')
+                    if pvlen >= 2 and lowpvfn:
+                        ucipv = [str(m) for m in pv]
+                        with open(lowpvfn, 'a') as s:
+                            s.write(
+                                f'{epdline} Acms {movetimems}; '
+                                f'C0 "pv too short: {len(ucipv)}";\n'
+                            )
+                else:
+                    # --- check tactical moves inside pv ---
+                    temp_board = board.copy()
+                    for i, m in enumerate(pv):
+                        if i >= pvlen:
+                            break
 
-                # Save to file the position where engine could not
-                # create the required pv length. This file can be used
-                # to investigate the issue.
-                if pvlen >= 2 and lowpvfn:
-                    with open(lowpvfn, 'a') as s:
-                        s.write(f'{epdline} Acms {movetimems}; '
-                                f'C0 "status: pvlength is below requirement, '
-                                f'ucipv: {ucipv}, ucipvlen: {len(ucipv)}, '
-                                f'pvlength required: {pvlen}"; '
-                                f'Anno "{engine.id["name"]}";\n')
-                continue
+                        sanmove = temp_board.san(m)
 
-            # Don't extract if there is capture or promote, or a check
-            # move in the first pvlen plies of the pv
+                        if tactical_move(move=sanmove):
+                            accept = False
+                            break
 
-            # Evaluate pv
-            sanpv, istactical = [], False
-            for i, m in enumerate(pv):
-                if i > pvlen - 1:
-                    break
+                        temp_board.push(m)
 
-                sanmove = board.san(m)
-                sanpv.append(sanmove)
+            # ---- SINGLE CHECKPOINT LOCATION ----
+            evaluated_epds.add(epd)
+            eval_buffer.append(epdline)
 
-                if tactical_move(board=None, epdinfo=None, move=sanmove):
-                    istactical = True
-                    break
+            if len(eval_buffer) >= FLUSH_EVERY:
+                evaluated_fh.write("\n".join(eval_buffer) + "\n")
+                evaluated_fh.flush()
+                eval_buffer.clear()
 
-                board.push(m)
+            # ---- SINGLE OUTPUT LOCATION ----
+            if accept:
+                output_fh.write(epdline + "\n")
 
-            if istactical:
-                print(sanpv)
-                print('Skip, move in the pv has a tactical move')
-                continue
+    # final flush
+    if eval_buffer:
+        evaluated_fh.write("\n".join(eval_buffer) + "\n")
 
-            print('saving ...')
-            print(epdline)
-            print(sanpv)
-            with open(outputepd, 'a') as s:
-                s.write(f'{epdline}\n')
+    evaluated_fh.close()
+    output_fh.close()
 
     engine.quit()
-
     engineprocess.stdin.write('quit\n')
-    print('quit engineprocess')
+    engineprocess.stdin.flush()
+
 
 
 def main():
@@ -308,9 +308,9 @@ def main():
     outepd_file = args.outputepd
     movetimems = args.movetimems
 
-    # Delete existing epdoutput file
+    # DO NOT delete existing epdoutput file
     tmpfn = Path(outepd_file)
-    tmpfn.unlink(missing_ok=True)
+    # tmpfn.unlink(missing_ok=True)
 
     # Save epd where engine pv length is below required pv length, append mode.
     lowpvfn = None #'low_pvlength.epd'
@@ -323,7 +323,7 @@ def main():
 
     timestart = time.perf_counter_ns()
 
-    print('Analysis starts ...')
+    print('Analysis starts...')
     runengine(engine_file, args.engine_option, epd_file, movetimems,
               outepd_file, args.pvlen, args.scorecp_margin, args.static_eval,
               lowpvfn, args.evaluated_file)

@@ -1,6 +1,7 @@
 #include "Engine/Evaluation.h"
-#include "Engine/defs.h" // For numberOfTrailingZeros
+#include "Engine/defs.h"
 #include "Engine/Zobrist.h"
+#include "Engine/Magic.h"
 #include <fstream>
 #include <iostream>
 
@@ -108,6 +109,54 @@ const int eg_king_table[64] = {
 };
 
 
+//Pawn Structure
+static const int ISOLATED_PAWN_PENALTY_MG[8] = {-5, -7, -10, -10, -10, -10, -7, -5};
+static const int ISOLATED_PAWN_PENALTY_EG[8] = {-10, -14, -20, -20, -20, -20, -14, -10};
+static const int PASSED_PAWN_BONUS_MG[2][8] = {{0, 2, 5, 10, 20, 40, 70, 120}, {120, 70, 40, 20, 10, 5, 2, 0}};
+static const int PASSED_PAWN_BONUS_EG[2][8] = {{0, 5, 10, 20, 40, 90, 150, 200}, {200, 150, 90, 40, 20, 10, 5, 0}};
+static const int DOUBLED_ISOLATED_PAWN_MG = -10;
+static const int DOUBLED_ISOLATED_PAWN_EG = -20;
+static const int PAWN_CONNECTED_BONUS_MG[2][64] = {
+    { 0, 0, 0, 0, 0, 0, 0, 0,
+      2, 2, 2, 3, 3, 2, 2, 2,
+      4, 4, 5, 6, 6, 5, 4, 4,
+      7, 8,10,12,12,10, 8, 7,
+     11,14,17,21,21,17,14,11,
+     16,21,25,33,33,25,21,16,
+     32,42,50,55,55,50,42,32,
+      0, 0, 0, 0, 0, 0, 0, 0},
+
+    { 0, 0, 0, 0, 0, 0, 0, 0,
+     32,42,50,55,55,50,42,32,
+     16,21,25,33,33,25,21,16,
+     11,14,17,21,21,17,14,11,
+      7, 8,10,12,12,10, 8, 7,
+      4, 4, 5, 6, 6, 5, 4, 4,
+      2, 2, 2, 3, 3, 2, 2, 2,
+      0, 0, 0, 0, 0, 0, 0, 0}
+};
+
+static const int PAWN_CONNECTED_BONUS_EG[2][64] = {
+    { 0, 0, 0, 0, 0, 0, 0, 0,
+      4, 4, 5, 6, 6, 5, 4, 4,
+      7, 8,10,12,12,10, 8, 7,
+     11,14,17,21,21,17,14,11,
+     16,21,25,33,33,25,21,16,
+     26,31,35,43,43,35,31,26,
+     52,62,70,86,86,70,62,52,
+      0, 0, 0, 0, 0, 0, 0, 0},
+
+    { 0, 0, 0, 0, 0, 0, 0, 0,
+     52,62,70,86,86,70,62,52,
+     26,31,35,43,43,35,31,26,
+     16,21,25,33,33,25,21,16,
+     11,14,17,21,21,17,14,11,
+     7, 8,10,12,12,10, 8, 7,
+     4, 4, 5, 6, 6, 5, 4, 4,
+     0, 0, 0, 0, 0, 0, 0, 0}
+};
+
+
 void Evaluation::initAll() {
     // 1. Initialize Phase Increments
     for (int i = 0; i < 14; i++) PHASE_INC[i] = 0;
@@ -190,6 +239,175 @@ void Evaluation::pieceSquares(const Board& board, int& mg, int& eg, int &gamePha
     }
 }
 
+// Attack info helper
+void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
+    attackInfo.reset();
+    U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
+    const int dirs[2][2] = {{7, 64 - 9}, {9, 64 - 7}};
+
+    for (int side = 0; side < 2; side++){
+        //rooks
+        U64 rooks = board.bitboards[Board::ROOK | side];
+        while (rooks){	
+            int from = numberOfTrailingZeros(rooks);
+            U64 tmpTarg = Magic::rookAttacksFrom(occup, from);
+            attackInfo.rooks[side]|= tmpTarg;
+            rooks&= rooks - 1;
+        }
+
+        //queens
+        U64 queens = board.bitboards[Board::QUEEN | side];
+        while (queens){	
+            int from = numberOfTrailingZeros(queens);
+            U64 tmpTarg = Magic::rookAttacksFrom(occup, from) | Magic::bishopAttacksFrom(occup, from);
+            attackInfo.queens[side]|= tmpTarg;
+            queens&= queens - 1;
+        }
+
+        //bishops
+        U64 bishops = board.bitboards[Board::BISHOP | side];
+        while (bishops){
+            int from = numberOfTrailingZeros(bishops);
+            U64 tmpTarg = Magic::bishopAttacksFrom(occup, from);
+            attackInfo.bishops[side]|=  tmpTarg;
+            bishops&= bishops - 1;
+        }
+
+        //knights
+        U64 knights = board.bitboards[Board::KNIGHT | side];        
+        while (knights){
+            int from = numberOfTrailingZeros(knights);
+            U64 tmpTarg = BitBoardGen::BITBOARD_KNIGHT_ATTACKS[from];
+            attackInfo.knights[side]|=  tmpTarg;
+            knights&= knights - 1;
+        }
+
+        //Pawns
+        U64 pawnBB = board.bitboards[Board::PAWN | side];
+        int epSquare = board.state.epSquare;
+
+        for (int i = 0; i < 2; i++){
+            U64 wFile = BitBoardGen::WRAP_FILES[i];
+            U64 attacks = BitBoardGen::circular_lsh(pawnBB, dirs[i][side]) & ~wFile;
+            attackInfo.pawns[side]|= attacks;
+        }      
+    }
+}
+
+void Evaluation::evalPawns(const Board& board, int& mg, int& eg){
+	
+    AttackInfo attackInfo;
+    computeAttacks(board, attackInfo);
+
+	const int up_ahead[2] = {8, -8};	
+	int s = 1;
+	U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
+
+	for (int side = 0; side < 2; side++){
+		
+		int opp = side^1;		
+		U64 pawnBB = board.bitboards[Board::PAWN | side];
+		U64 pawns = pawnBB;
+		U64 oppPawns = board.bitboards[Board::PAWN | opp];
+
+		while (pawns){
+			int sq = numberOfTrailingZeros(pawns);
+			int file = sq & 7;
+
+			bool isolated = false;			
+			
+			//isolated
+			if ((BitBoardGen::ADJACENT_FILES[file] & pawnBB) == 0){
+				mg+= s * ISOLATED_PAWN_PENALTY_MG[file];
+				eg+= s * ISOLATED_PAWN_PENALTY_EG[file];
+				isolated = true;
+			}
+			
+			//passed
+			U64 frontSpan = BitBoardGen::FRONT_SPAN[side][sq];
+			bool passed = false;
+
+			U64 stoppers = frontSpan & oppPawns;
+			
+			if (!stoppers){
+				int r = sq >> 3;
+				mg+= s * PASSED_PAWN_BONUS_MG[side][r];
+				eg+= s * PASSED_PAWN_BONUS_EG[side][r];
+				passed = true;
+			}
+			
+			bool connected = false;
+
+			//connected
+			if (BitBoardGen::PAWN_CONNECTED[side][sq] & pawnBB){
+				mg+= s * PAWN_CONNECTED_BONUS_MG[side][sq];
+				eg+= s * PAWN_CONNECTED_BONUS_EG[side][sq];
+				connected = true;
+			}
+			pawns&= pawns - 1;
+
+			//test for isolated and doubled
+			if (isolated && (BitBoardGen::BITBOARD_FILES[file] & pawns)){
+				mg+= s * DOUBLED_ISOLATED_PAWN_MG;
+				eg+= s * DOUBLED_ISOLATED_PAWN_EG;
+			}
+
+			if (passed){
+				int r = (side == Board::WHITE) ? sq >> 3 : (7 - (sq >> 3));
+
+				//rank 3
+				if (r > 2){
+					int w = (r - 2) * (r - 2) + 2;
+					int blockSq = sq + up_ahead[side];
+					int dopp = std::min(BitBoardGen::DISTANCE_SQS[blockSq][board.kingSQ[opp]], 5);
+					int dus = std::min(BitBoardGen::DISTANCE_SQS[blockSq][board.kingSQ[side]], 5);		
+					eg+= s * (5 * dopp - 2 * dus) * w;
+
+					if (r != 6)
+						eg+= -s * std::min(BitBoardGen::DISTANCE_SQS[blockSq + up_ahead[side]][board.kingSQ[side]], 5) * w;
+
+					if (!board.board[blockSq]){
+						U64 defendedSquares = BitBoardGen::SQUARES_AHEAD[side][sq];
+						U64 unsafeSquares = BitBoardGen::SQUARES_AHEAD[side][sq];
+						U64 squaresToQueen = BitBoardGen::SQUARES_AHEAD[side][sq];
+
+						U64 rooks_queens = board.bitboards[Board::WHITE_ROOK] | board.bitboards[Board::BLACK_ROOK] |
+										   board.bitboards[Board::WHITE_QUEEN] | board.bitboards[Board::BLACK_QUEEN];
+
+						U64 bb = BitBoardGen::SQUARES_AHEAD[opp][sq] & rooks_queens & Magic::rookAttacksFrom(occup, sq);
+
+						//should include pawns?
+						if (!(board.bitboards[side] & bb)){
+                            U64 allAttacksSide = attackInfo.rooks[side] | attackInfo.knights[side] | attackInfo.bishops[side] |
+                                                 attackInfo.queens[side] | attackInfo.pawns[side];
+							defendedSquares&= allAttacksSide;
+                        }
+
+						if (!(board.bitboards[opp] & bb)){
+                            U64 allAttacksOpp = attackInfo.rooks[opp] | attackInfo.knights[opp] | attackInfo.bishops[opp] |
+                                                attackInfo.queens[opp] | attackInfo.pawns[opp];
+							unsafeSquares&= allAttacksOpp | board.bitboards[opp];
+                        }
+
+						int k = !unsafeSquares ? 20 : !(unsafeSquares & BitBoardGen::SQUARES[blockSq]) ? 9 : 0;
+
+						if (defendedSquares == squaresToQueen)
+							k+= 6;
+						else if (defendedSquares & BitBoardGen::SQUARES[blockSq])
+							k+= 4;
+
+						mg+= s * k * w;
+						eg+= s * k * w;
+					}
+				} //rank 3
+			}
+		}
+		s = -1;
+	}
+    //TODO
+	//backward pawns
+	//backward_pawns_chained
+}
 
 int Evaluation::evaluate(const Board& board) {
     int mg = 0;
@@ -198,6 +416,7 @@ int Evaluation::evaluate(const Board& board) {
 
     materialBalance(board, mg, eg);
     pieceSquares(board, mg, eg, phase);
+    evalPawns(board, mg, eg);
 
     if (phase > TOTAL_PHASE) phase = TOTAL_PHASE;
     int score = ((mg * phase) + (eg * (TOTAL_PHASE - phase))) / TOTAL_PHASE;

@@ -10,7 +10,7 @@ class MoveScore{
 		int score;
 		int move;
 		
-		MoveScore(){};
+		MoveScore() { move = 0; score = 0; };
 		MoveScore(int mv, int sc){
 			move = mv;
 			score = sc;

@@ -22,7 +22,7 @@ def run_file(fen_file: Path):
         "--outputepd", str(output_file),
         "--engine", ENGINE_PATH,
         "--engine-option", "Threads=1",
-        "--movetimems", "750",
+        "--movetimems", "700",
         "--pvlen", "4",
         "--static-eval",
         "--evaluated-file", str(evaluated_file)
