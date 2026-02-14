@@ -10,23 +10,15 @@ struct AttackInfo{
 	U64 queens[2];
 	U64 pawns[2];
 
+	// count number of attacks against opp's king region inside computeAttacks
+	// these counts are used in king attack eval.
+	int rookAttackersKing[2];
+	int knightAttackersKing[2];
+	int bishopAttackersKing[2];
+	int queenAttackersKing[2];
+
 	AttackInfo(){
 	    reset();
-	}
-
-	int countPieceAttacksAt(U64 sq, int side){
-		int attacks = 0;
-		
-		if (sq & rooks[side]) 
-			attacks++;
-		if (sq & knights[side]) 
-			attacks++;
-		if (sq & bishops[side]) 
-			attacks++;
-		if (sq & queens[side]) 
-			attacks++;
-
-		return attacks;
 	}
 
 	void reset(){
@@ -40,6 +32,15 @@ struct AttackInfo{
 		queens[1] = 0;		
 		pawns[0] = 0; 
 		pawns[1] = 0;
+
+		rookAttackersKing[0] = 0;
+		rookAttackersKing[1] = 0;
+		knightAttackersKing[0] = 0;
+		knightAttackersKing[1] = 0;
+		bishopAttackersKing[0] = 0;
+		bishopAttackersKing[1] = 0;
+		queenAttackersKing[0] = 0;
+		queenAttackersKing[1] = 0;
 	}
 };
 

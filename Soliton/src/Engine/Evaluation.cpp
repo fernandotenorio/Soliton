@@ -253,35 +253,70 @@ void Evaluation::computeAttacks(const Board& board, EvalInfo& ei){
     // inits occupancy BB
     U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
     ei.occup = occup;
-
     const int dirs[2][2] = {{7, 64 - 9}, {9, 64 - 7}};
 
     for (int side = 0; side < 2; side++){
+        // Gather opp king region
+        int opp = side^1;
+        U64 oppKing = board.bitboards[Board::KING | opp];
+        int oppKingSq = numberOfTrailingZeros(oppKing);
+        U64 oppKingRegion = BitBoardGen::BITBOARD_KING_REGION[opp][oppKingSq];
+
+        // 2. Prepare X-Ray Occupancies
+        // These bitboards remove OUR sliders from the occupancy.
+        // This effectively makes our own pieces "transparent" to the attack generator.
+        U64 myRooks   = board.bitboards[Board::ROOK | side];
+        U64 myBishops = board.bitboards[Board::BISHOP | side];
+        U64 myQueens  = board.bitboards[Board::QUEEN | side];
+
+        // For Linear attacks (Rooks/Queens): Remove my Rooks and Queens
+        U64 occupLinear   = occup ^ (myRooks | myQueens);
+
+        // For Diagonal attacks (Bishops/Queens): Remove my Bishops and Queens
+        U64 occupDiagonal = occup ^ (myBishops | myQueens);
+
         //rooks
-        U64 rooks = board.bitboards[Board::ROOK | side];
+        U64 rooks = myRooks;
         while (rooks){	
             int from = numberOfTrailingZeros(rooks);
-            U64 tmpTarg = Magic::rookAttacksFrom(occup, from);
+            U64 tmpTarg = Magic::rookAttacksFrom(occupLinear, from);
             ei.attackInfo.rooks[side]|= tmpTarg;
+
+            if (tmpTarg & oppKingRegion)
+                ei.attackInfo.rookAttackersKing[side]++;
+
             rooks&= rooks - 1;
         }
 
-        //queens
-        U64 queens = board.bitboards[Board::QUEEN | side];
-        while (queens){	
-            int from = numberOfTrailingZeros(queens);
-            U64 tmpTarg = Magic::rookAttacksFrom(occup, from) | Magic::bishopAttacksFrom(occup, from);
-            ei.attackInfo.queens[side]|= tmpTarg;
-            queens&= queens - 1;
-        }
-
         //bishops
-        U64 bishops = board.bitboards[Board::BISHOP | side];
+        U64 bishops = myBishops;
         while (bishops){
             int from = numberOfTrailingZeros(bishops);
-            U64 tmpTarg = Magic::bishopAttacksFrom(occup, from);
+            U64 tmpTarg = Magic::bishopAttacksFrom(occupDiagonal, from);
             ei.attackInfo.bishops[side]|=  tmpTarg;
+
+            if (tmpTarg & oppKingRegion)
+                ei.attackInfo.bishopAttackersKing[side]++;
+
             bishops&= bishops - 1;
+        }
+
+        //queens
+        U64 queens = myQueens;
+        while (queens){	
+            int from = numberOfTrailingZeros(queens);
+
+            // Queens combine both X-Ray types
+            U64 linear   = Magic::rookAttacksFrom(occupLinear, from);
+            U64 diagonal = Magic::bishopAttacksFrom(occupDiagonal, from);
+            U64 tmpTarg  = linear | diagonal;
+
+            ei.attackInfo.queens[side]|= tmpTarg;
+
+            if (tmpTarg & oppKingRegion)
+                ei.attackInfo.queenAttackersKing[side]++;
+
+            queens&= queens - 1;
         }
 
         //knights
@@ -290,6 +325,10 @@ void Evaluation::computeAttacks(const Board& board, EvalInfo& ei){
             int from = numberOfTrailingZeros(knights);
             U64 tmpTarg = BitBoardGen::BITBOARD_KNIGHT_ATTACKS[from];
             ei.attackInfo.knights[side]|=  tmpTarg;
+
+            if (tmpTarg & oppKingRegion)
+                ei.attackInfo.knightAttackersKing[side]++;
+
             knights&= knights - 1;
         }
 

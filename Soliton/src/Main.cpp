@@ -14,20 +14,12 @@ int main() {
 	Magic::magicArraysInit();
 	UCI::loop();
 	
-	//Board board = Board::fromFEN("4k3/2p5/8/p3P3/2P4P/1P2PpP1/8/4K3 b - - 0 1");
-	// AttackInfo info;
-	// Evaluation::computeAttacks(board, info);
-	// std::cout << "Pawn atacks" << std::endl;
-	// BitBoardGen::printBB(info.pawns[0]);
-	// std::cout << "Rook atacks" << std::endl;
-	// BitBoardGen::printBB(info.rooks[0]);
-	// std::cout << "Kn atacks" << std::endl;
-	// BitBoardGen::printBB(info.knights[0]);
-	// std::cout << "Bishop atacks" << std::endl;
-	// BitBoardGen::printBB(info.bishops[0]);
-	// std::cout << "Queen atacks" << std::endl;
-	// BitBoardGen::printBB(info.queens[0]);
-	// int mg, eg = 0;
-	// Evaluation::evalPawns(board, mg, eg);
+	// Board board = Board::fromFEN("8/4k3/3ppp2/8/8/1B6/B7/K7 w - - 0 1");
+	// EvalInfo ei;
+	// Evaluation::computeAttacks(board, ei);
+	// std::cout << "Rook atacks " << ei.attackInfo.rookAttackersKing[0] << std::endl;
+	// std::cout << "Kn atacks " << ei.attackInfo.knightAttackersKing[0] << std::endl;
+	// std::cout << "Bishop atacks " << ei.attackInfo.bishopAttackersKing[0] << std::endl;
+	// std::cout << "Queen atacks " << ei.attackInfo.queenAttackersKing[0] << std::endl;
 	return 0;
 }
