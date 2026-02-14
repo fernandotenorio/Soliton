@@ -221,7 +221,7 @@ def runengine(engine_file, engineoption, epdfile, movetimems,
                 # Save to file the position where engine could not
                 # create the required pv length. This file can be used
                 # to investigate the issue.
-                if pvlen >= 2:
+                if pvlen >= 2 and lowpvfn:
                     with open(lowpvfn, 'a') as s:
                         s.write(f'{epdline} Acms {movetimems}; '
                                 f'C0 "status: pvlength is below requirement, '
@@ -313,7 +313,7 @@ def main():
     tmpfn.unlink(missing_ok=True)
 
     # Save epd where engine pv length is below required pv length, append mode.
-    lowpvfn = 'low_pvlength.epd'
+    lowpvfn = None #'low_pvlength.epd'
 
     if args.log:
         logging.basicConfig(
