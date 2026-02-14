@@ -157,60 +157,50 @@ void Evaluation::initAll() {
     }
 }
 
+/*Valuation Features */
+//Eval material
+void Evaluation::materialBalance(const Board& board, int& mg, int& eg){
+	mg+= board.material[Board::WHITE] - board.material[Board::BLACK];
+	eg+= board.material[Board::WHITE] - board.material[Board::BLACK];
+}
+
+void Evaluation::pieceSquares(const Board& board, int& mg, int& eg, int &gamePhase){
+    U64 pieces = board.bitboards[Board::WHITE];
+
+    while (pieces) {
+        int sq = numberOfTrailingZeros(pieces);
+        int piece = board.board[sq];
+
+        mg+= PIECE_SQUARES_MG[piece][sq];
+        eg+= PIECE_SQUARES_END[piece][sq];
+        gamePhase += PHASE_INC[piece];
+        pieces &= pieces - 1;
+    }
+
+    pieces = board.bitboards[Board::BLACK];
+    while (pieces) {
+        int sq = numberOfTrailingZeros(pieces);
+        int piece = board.board[sq];
+
+        // Tables for Black are already mirrored in initAll, 
+        mg-= PIECE_SQUARES_MG[piece][sq];
+        eg-= PIECE_SQUARES_END[piece][sq];
+        gamePhase += PHASE_INC[piece];
+        pieces &= pieces - 1;
+    }
+}
+
+
 int Evaluation::evaluate(const Board& board) {
-    int mg[2] = { 0, 0 };
-    int eg[2] = { 0, 0 };
-    int gamePhase = 0;
+    int mg = 0;
+    int eg = 0;
+    int phase = 0;
 
-    // 1. Material (Assuming Board updates this incrementally)
-    // Board::WHITE = 0, Board::BLACK = 1
-    mg[Board::WHITE] = board.material[Board::WHITE];
-    eg[Board::WHITE] = board.material[Board::WHITE];
-    mg[Board::BLACK] = board.material[Board::BLACK];
-    eg[Board::BLACK] = board.material[Board::BLACK];
+    materialBalance(board, mg, eg);
+    pieceSquares(board, mg, eg, phase);
 
-    // 2. Positional (White)
-    U64 pieces = board.bitboards[Board::WHITE]; // All White Pieces
-    while (pieces) {
-        int sq = numberOfTrailingZeros(pieces);
-        int piece = board.board[sq];
-
-        mg[Board::WHITE] += PIECE_SQUARES_MG[piece][sq];
-        eg[Board::WHITE] += PIECE_SQUARES_END[piece][sq];
-        gamePhase += PHASE_INC[piece];
-
-        pieces &= pieces - 1;
-    }
-
-    // 3. Positional (Black)
-    pieces = board.bitboards[Board::BLACK]; // All Black Pieces
-    while (pieces) {
-        int sq = numberOfTrailingZeros(pieces);
-        int piece = board.board[sq];
-
-        // Note: The Tables for Black are already mirrored in initAll, 
-        // but we need to access them using the square index.
-        // If your board stores black pieces on A8 as 56, and tables are set, 
-        // we just use [piece][sq].
-
-        mg[Board::BLACK] += PIECE_SQUARES_MG[piece][sq];
-        eg[Board::BLACK] += PIECE_SQUARES_END[piece][sq];
-        gamePhase += PHASE_INC[piece];
-
-        pieces &= pieces - 1;
-    }
-
-    // 4. Tapered Evaluation
-    int mgScore = mg[Board::WHITE] - mg[Board::BLACK];
-    int egScore = eg[Board::WHITE] - eg[Board::BLACK];
-
-    int phase = gamePhase;
     if (phase > TOTAL_PHASE) phase = TOTAL_PHASE;
-
-    // Linearly interpolate
-    int score = ((mgScore * phase) + (egScore * (TOTAL_PHASE - phase))) / TOTAL_PHASE;
-
-    // 5. Return from perspective of side to move
+    int score = ((mg * phase) + (eg * (TOTAL_PHASE - phase))) / TOTAL_PHASE;
     return (board.state.currentPlayer == Board::WHITE) ? score : -score;
 }
 

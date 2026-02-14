@@ -24,6 +24,8 @@ public:
     static const int TOTAL_PHASE = 24;
 
     static void initAll();
+    static void materialBalance(const Board& board, int& mg, int& eg);
+    static void pieceSquares(const Board& board, int& mg, int& eg, int& gamePhase);
     static int evaluate(const Board& board);
 
     // Eval mirror testing
