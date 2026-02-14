@@ -96,7 +96,6 @@ const int mg_king_table[64] = {
     -30, -40, -40, -50, -50, -40, -40, -30
 };
 
-// End Game Kings usually want to be in the center
 const int eg_king_table[64] = {
     -50, -30, -30, -30, -30, -30, -30, -50,
     -30, -30,   0,   0,   0,   0, -30, -30,
@@ -108,6 +107,17 @@ const int eg_king_table[64] = {
     -50, -40, -30, -20, -20, -30, -40, -50
 };
 
+//Piece on open files
+static const int R_OPEN_MG = 14;
+static const int R_OPEN_EG = 20;
+static const int R_SOPEN_MG = 7;
+static const int R_SOPEN_EG = 10;
+static const int Q_OPEN_MG = 6;
+static const int Q_OPEN_EG = 8;
+static const int Q_SOPEN_MG = 3;
+static const int Q_SOPEN_EG = 4;
+static const int OPENFILES_BONUS_MG[2][2] = {{R_OPEN_MG, R_SOPEN_MG},{Q_OPEN_MG, Q_SOPEN_MG}}; 
+static const int OPENFILES_BONUS_EG[2][2] = {{R_OPEN_EG, R_SOPEN_EG},{Q_OPEN_EG, Q_SOPEN_EG}};
 
 //Pawn Structure
 static const int ISOLATED_PAWN_PENALTY_MG[8] = {-5, -7, -10, -10, -10, -10, -7, -5};
@@ -403,9 +413,39 @@ void Evaluation::evalPawns(const Board& board, int& mg, int& eg){
 		}
 		s = -1;
 	}
-    //TODO
-	//backward pawns
-	//backward_pawns_chained
+}
+
+void Evaluation::pieceOpenFile(const Board& board, int& mg, int& eg){
+	
+	const int pieceTypes[2] = {Board::ROOK, Board::QUEEN};
+	U64 pawnBoth = board.bitboards[Board::WHITE_PAWN] | board.bitboards[Board::BLACK_PAWN];
+	int s = 1;
+
+	for (int side = 0; side < 2; side++){
+		for (int p = 0; p < 2; p++){
+			
+			int opp = side^1;
+			U64 pieces = board.bitboards[pieceTypes[p] | side];
+			U64 pawnSide = board.bitboards[Board::PAWN | side];
+			U64 pawnOpp = board.bitboards[Board::PAWN | opp];
+			
+			while (pieces){
+				int sq = numberOfTrailingZeros(pieces);
+				int file = sq & 7;
+
+				if ((pawnBoth & BitBoardGen::BITBOARD_FILES[file]) == 0){
+					mg+= s * OPENFILES_BONUS_MG[p][0];
+					eg+= s * OPENFILES_BONUS_EG[p][0];
+				}
+				else if ((pawnSide & BitBoardGen::BITBOARD_FILES[file]) == 0){
+					mg+= s * OPENFILES_BONUS_MG[p][1];
+					eg+= s * OPENFILES_BONUS_EG[p][1];
+				}
+				pieces&= pieces - 1;
+			}
+		}
+		s = -1;
+	}
 }
 
 int Evaluation::evaluate(const Board& board) {
@@ -416,6 +456,7 @@ int Evaluation::evaluate(const Board& board) {
     materialBalance(board, mg, eg);
     pieceSquares(board, mg, eg, phase);
     evalPawns(board, mg, eg);
+    //pieceOpenFile(board, mg, eg);
 
     if (phase > TOTAL_PHASE) phase = TOTAL_PHASE;
     int score = ((mg * phase) + (eg * (TOTAL_PHASE - phase))) / TOTAL_PHASE;

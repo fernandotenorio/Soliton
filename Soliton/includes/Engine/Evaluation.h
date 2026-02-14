@@ -68,7 +68,8 @@ public:
     static void pieceSquares(const Board& board, int& mg, int& eg, int& gamePhase);
 	static void computeAttacks(const Board& board, AttackInfo& attackInfo);
 	static void evalPawns(const Board& board, int& mg, int& eg);
-    static int evaluate(const Board& board);
+	static void pieceOpenFile(const Board& board, int& mg, int& eg);
+	static int evaluate(const Board& board);
 
     // Eval mirror testing
     static Board mirrorBoard(Board& board);
