@@ -249,10 +249,11 @@ void Evaluation::pieceSquares(const Board& board, int& mg, int& eg, int &gamePha
     }
 }
 
-// Attack info helper
-void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
-    attackInfo.reset();
+void Evaluation::computeAttacks(const Board& board, EvalInfo& ei){
+    // inits occupancy BB
     U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
+    ei.occup = occup;
+
     const int dirs[2][2] = {{7, 64 - 9}, {9, 64 - 7}};
 
     for (int side = 0; side < 2; side++){
@@ -261,7 +262,7 @@ void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
         while (rooks){	
             int from = numberOfTrailingZeros(rooks);
             U64 tmpTarg = Magic::rookAttacksFrom(occup, from);
-            attackInfo.rooks[side]|= tmpTarg;
+            ei.attackInfo.rooks[side]|= tmpTarg;
             rooks&= rooks - 1;
         }
 
@@ -270,7 +271,7 @@ void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
         while (queens){	
             int from = numberOfTrailingZeros(queens);
             U64 tmpTarg = Magic::rookAttacksFrom(occup, from) | Magic::bishopAttacksFrom(occup, from);
-            attackInfo.queens[side]|= tmpTarg;
+            ei.attackInfo.queens[side]|= tmpTarg;
             queens&= queens - 1;
         }
 
@@ -279,7 +280,7 @@ void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
         while (bishops){
             int from = numberOfTrailingZeros(bishops);
             U64 tmpTarg = Magic::bishopAttacksFrom(occup, from);
-            attackInfo.bishops[side]|=  tmpTarg;
+            ei.attackInfo.bishops[side]|=  tmpTarg;
             bishops&= bishops - 1;
         }
 
@@ -288,7 +289,7 @@ void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
         while (knights){
             int from = numberOfTrailingZeros(knights);
             U64 tmpTarg = BitBoardGen::BITBOARD_KNIGHT_ATTACKS[from];
-            attackInfo.knights[side]|=  tmpTarg;
+            ei.attackInfo.knights[side]|=  tmpTarg;
             knights&= knights - 1;
         }
 
@@ -299,19 +300,15 @@ void Evaluation::computeAttacks(const Board& board, AttackInfo& attackInfo){
         for (int i = 0; i < 2; i++){
             U64 wFile = BitBoardGen::WRAP_FILES[i];
             U64 attacks = BitBoardGen::circular_lsh(pawnBB, dirs[i][side]) & ~wFile;
-            attackInfo.pawns[side]|= attacks;
+            ei.attackInfo.pawns[side]|= attacks;
         }      
     }
 }
 
-void Evaluation::evalPawns(const Board& board, int& mg, int& eg){
-	
-    AttackInfo attackInfo;
-    computeAttacks(board, attackInfo);
-
+void Evaluation::evalPawns(const Board& board, EvalInfo& ei, int& mg, int& eg){
 	const int up_ahead[2] = {8, -8};	
 	int s = 1;
-	U64 occup = board.bitboards[Board::WHITE] | board.bitboards[Board::BLACK];
+	U64 occup = ei.occup;
 
 	for (int side = 0; side < 2; side++){
 		int opp = side^1;		
@@ -387,14 +384,14 @@ void Evaluation::evalPawns(const Board& board, int& mg, int& eg){
 
 						//should include pawns?
 						if (!(board.bitboards[side] & bb)){
-                            U64 allAttacksSide = attackInfo.rooks[side] | attackInfo.knights[side] | attackInfo.bishops[side] |
-                                                 attackInfo.queens[side] | attackInfo.pawns[side];
+                            U64 allAttacksSide = ei.attackInfo.rooks[side] | ei.attackInfo.knights[side] | ei.attackInfo.bishops[side] |
+                                                 ei.attackInfo.queens[side] | ei.attackInfo.pawns[side];
 							defendedSquares&= allAttacksSide;
                         }
 
 						if (!(board.bitboards[opp] & bb)){
-                            U64 allAttacksOpp = attackInfo.rooks[opp] | attackInfo.knights[opp] | attackInfo.bishops[opp] |
-                                                attackInfo.queens[opp] | attackInfo.pawns[opp];
+                            U64 allAttacksOpp = ei.attackInfo.rooks[opp] | ei.attackInfo.knights[opp] | ei.attackInfo.bishops[opp] |
+                                                ei.attackInfo.queens[opp] | ei.attackInfo.pawns[opp];
 							unsafeSquares&= allAttacksOpp | board.bitboards[opp];
                         }
 
@@ -448,14 +445,24 @@ void Evaluation::pieceOpenFile(const Board& board, int& mg, int& eg){
 	}
 }
 
+
+void Evaluation::initEvalInfo(const Board& board, EvalInfo& ei){
+    // inits occupancy and attacks BBs
+    computeAttacks(board, ei);
+}
+
 int Evaluation::evaluate(const Board& board) {
     int mg = 0;
     int eg = 0;
     int phase = 0;
 
+    // Initializes eval info, so we don't recompute stuff again
+    EvalInfo ei;
+    initEvalInfo(board, ei);
+
     materialBalance(board, mg, eg);
     pieceSquares(board, mg, eg, phase);
-    evalPawns(board, mg, eg);
+    evalPawns(board, ei, mg, eg);
     pieceOpenFile(board, mg, eg);
 
     if (phase > TOTAL_PHASE) phase = TOTAL_PHASE;

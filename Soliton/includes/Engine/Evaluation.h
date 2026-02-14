@@ -43,6 +43,20 @@ struct AttackInfo{
 	}
 };
 
+struct EvalInfo{
+	AttackInfo attackInfo;
+	U64 occup;
+
+	EvalInfo(){
+		reset();
+	}
+
+	void reset(){
+		attackInfo.reset();
+		occup = 0;
+	}
+};
+
 class Evaluation {
 public:
     // Piece Values (Used for Material initialization)
@@ -66,9 +80,10 @@ public:
     static void initAll();
     static void materialBalance(const Board& board, int& mg, int& eg);
     static void pieceSquares(const Board& board, int& mg, int& eg, int& gamePhase);
-	static void computeAttacks(const Board& board, AttackInfo& attackInfo);
-	static void evalPawns(const Board& board, int& mg, int& eg);
+	static void computeAttacks(const Board& board, EvalInfo& ei);
+	static void evalPawns(const Board& board, EvalInfo& ei, int& mg, int& eg);
 	static void pieceOpenFile(const Board& board, int& mg, int& eg);
+	static void initEvalInfo(const Board& board, EvalInfo& ei);
 	static int evaluate(const Board& board);
 
     // Eval mirror testing
