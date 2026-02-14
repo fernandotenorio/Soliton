@@ -456,7 +456,7 @@ int Evaluation::evaluate(const Board& board) {
     materialBalance(board, mg, eg);
     pieceSquares(board, mg, eg, phase);
     evalPawns(board, mg, eg);
-    //pieceOpenFile(board, mg, eg);
+    pieceOpenFile(board, mg, eg);
 
     if (phase > TOTAL_PHASE) phase = TOTAL_PHASE;
     int score = ((mg * phase) + (eg * (TOTAL_PHASE - phase))) / TOTAL_PHASE;
