@@ -166,6 +166,18 @@ static const int PAWN_CONNECTED_BONUS_EG[2][64] = {
      0, 0, 0, 0, 0, 0, 0, 0}
 };
 
+// King attack
+static const int STORM_MAP[64] = {
+    0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,
+    10, 10, 20,  0,  0, 20, 10, 10,
+    15, 20, 50, 15, 15, 50, 20, 15,
+    30, 50, 60, 50, 50, 60, 50, 30,
+    0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0
+};
+
 
 void Evaluation::initAll() {
     // 1. Initialize Phase Increments
@@ -452,7 +464,6 @@ void Evaluation::evalPawns(const Board& board, EvalInfo& ei, int& mg, int& eg){
 }
 
 void Evaluation::pieceOpenFile(const Board& board, int& mg, int& eg){
-	
 	const int pieceTypes[2] = {Board::ROOK, Board::QUEEN};
 	U64 pawnBoth = board.bitboards[Board::WHITE_PAWN] | board.bitboards[Board::BLACK_PAWN];
 	int s = 1;
@@ -484,6 +495,70 @@ void Evaluation::pieceOpenFile(const Board& board, int& mg, int& eg){
 	}
 }
 
+void Evaluation::evalKingAttack(const Board& board, int& mg, EvalInfo& ei){
+    mg+= kingAttack(board, Board::WHITE, ei) - kingAttack(board, Board::BLACK, ei);
+}
+
+int Evaluation::kingAttack(const Board& board, int side, EvalInfo& ei){
+    int opp = side^1;
+    U64 king = board.bitboards[Board::KING | opp];
+    int kingSq = numberOfTrailingZeros(king);
+    U64 attackerPawns = board.bitboards[Board::PAWN | side];
+
+    int numAttackers = 0;
+    int attackVal = 0;
+
+    //Attack weights
+    const int ROOK_AW = 137;
+    const int QUEEN_AW = 115;
+    const int BISHOP_AW = 11;
+    const int KNIGHT_AW = 95;
+
+    //Weight of attack by numAttackers, 0 or 1 attacker => 0 weight
+    const int ATTACK_W[] = {0, 0, 30, 75, 88, 94, 97, 99};
+
+    //rooks
+    int nrooks = ei.attackInfo.rookAttackersKing[side];
+    numAttackers+= nrooks;
+    attackVal+= nrooks * ROOK_AW;
+    
+    //queens
+    int nqueens = ei.attackInfo.queenAttackersKing[side];
+    numAttackers+= nqueens;
+    attackVal+= nqueens * QUEEN_AW;
+    
+    //bishops
+    int nbishops = ei.attackInfo.bishopAttackersKing[side];
+    numAttackers+= nbishops;
+    attackVal+= nbishops * BISHOP_AW;
+    
+    //knights
+    int nknights = ei.attackInfo.knightAttackersKing[side];
+    numAttackers+= nknights;
+    attackVal+= nknights * KNIGHT_AW;
+
+    //Pawn storm
+    U64 kingHalf = (kingSq % 8 < 4) ? BitBoardGen::QUEENSIDE_MASK : BitBoardGen::KINGSIDE_MASK;
+    attackerPawns&= kingHalf;
+
+    int stormBonus = 0;
+    int nStorm = BitBoardGen::popCount(attackerPawns);
+
+    if (nStorm > 1){
+        while(attackerPawns){
+            int from = numberOfTrailingZeros(attackerPawns);
+            stormBonus+= (opp == Board::WHITE) ? STORM_MAP[from] : STORM_MAP[MIRROR64[from]];
+            attackerPawns&= attackerPawns - 1;
+        }
+    }
+
+    // two or more pawns
+    attackVal+= stormBonus;
+    numAttackers = numAttackers > 7 ? 7 : numAttackers;
+    attackVal*= ATTACK_W[numAttackers];
+    return attackVal/150;
+}                                               
+
 
 void Evaluation::initEvalInfo(const Board& board, EvalInfo& ei){
     // inits occupancy and attacks BBs
@@ -503,6 +578,7 @@ int Evaluation::evaluate(const Board& board) {
     pieceSquares(board, mg, eg, phase);
     evalPawns(board, ei, mg, eg);
     pieceOpenFile(board, mg, eg);
+    evalKingAttack(board, mg, ei);
 
     if (phase > TOTAL_PHASE) phase = TOTAL_PHASE;
     int score = ((mg * phase) + (eg * (TOTAL_PHASE - phase))) / TOTAL_PHASE;
